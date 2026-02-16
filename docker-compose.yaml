@@ -1,0 +1,15 @@
+services:
+  kernel-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: avicii-kernel-builder
+    container_name: avicii_build
+    platform: linux/amd64
+    volumes:
+      # Mounts the current directory to /home/kernel in the container
+      - .:/home/kernel
+    # Ensures the script is executable and runs
+    entrypoint: ["sleep", "infinity"]
+    stdin_open: true
+    tty: true
