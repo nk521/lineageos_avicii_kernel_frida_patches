@@ -1,0 +1,86 @@
+diff --git a/android_kernel_oneplus_sm7250/fs/proc/internal.h b/android_kernel_oneplus_sm7250/fs/proc/internal.h
+index 6e3ff20fa..7f2b56077 100644
+--- a/android_kernel_oneplus_sm7250/fs/proc/internal.h
++++ b/android_kernel_oneplus_sm7250/fs/proc/internal.h
+@@ -121,7 +121,16 @@ static inline struct pid *proc_pid(const struct inode *inode)
+ 
+ static inline struct task_struct *get_proc_task(const struct inode *inode)
+ {
+-	return get_pid_task(proc_pid(inode), PIDTYPE_PID);
++	// return get_pid_task(proc_pid(inode), PIDTYPE_PID);
++    struct task_struct * p = get_pid_task(proc_pid(inode), PIDTYPE_PID);
++    char tcomm[64];
++    if (p->flags & PF_WQ_WORKER)
++        wq_worker_comm(tcomm, sizeof(tcomm), p);
++    else
++        __get_task_comm(tcomm, sizeof(tcomm), p);
++    if (strstr(tcomm, "frida") || strstr(tcomm, "gmain") || strstr(tcomm, "gum-js") || strstr(tcomm, "linjector") ||  strstr(tcomm, "gdbus"))
++        return NULL;
++    return p;
+ }
+ 
+ void task_dump_owner(struct task_struct *task, umode_t mode,
+diff --git a/android_kernel_oneplus_sm7250/fs/proc/task_mmu.c b/android_kernel_oneplus_sm7250/fs/proc/task_mmu.c
+index 5dc54eba3..7e6b0fcb9 100644
+--- a/android_kernel_oneplus_sm7250/fs/proc/task_mmu.c
++++ b/android_kernel_oneplus_sm7250/fs/proc/task_mmu.c
+@@ -348,6 +348,18 @@ static void show_vma_header_prefix(struct seq_file *m,
+ 	seq_putc(m, ' ');
+ }
+ 
++static int bypass_show_map_vma(struct vm_area_struct *vma) {
++    struct file *file = vma->vm_file;
++    vm_flags_t flags = vma->vm_flags;
++    if (file && file->f_path.dentry && (strstr(file->f_path.dentry->d_iname, "frida-") || strstr(file->f_path.dentry->d_iname, "/data/local/tmp/")))
++        return 1;
++    if (file && file->f_path.dentry && strstr(file->f_path.dentry->d_iname, "libart.so") && (flags & VM_EXEC))
++        return 1;
++    if (file && file->f_path.dentry && (strstr(file->f_path.dentry->d_iname, "memfd:jit-cache") || strstr(file->f_path.dentry->d_iname, "memfd:jit-zygote-cache")))
++        return 1;
++    return 0;
++}
++
+ static void
+ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
+ {
+@@ -360,6 +372,9 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
+ 	dev_t dev = 0;
+ 	const char *name = NULL;
+ 
++	if (bypass_show_map_vma(vma) == 1)
++        return;
++
+ 	if (file) {
+ 		struct inode *inode = file_inode(vma->vm_file);
+ 		dev = inode->i_sb->s_dev;
+@@ -394,6 +409,11 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
+ 			goto done;
+ 		}
+ 
++		if ((flags & VM_EXEC)) {
++            name = "[vdso]";
++            goto done;
++        }
++
+ 		if (vma->vm_start <= mm->brk &&
+ 		    vma->vm_end >= mm->start_brk) {
+ 			name = "[heap]";
+@@ -844,6 +864,9 @@ static int show_smap(struct seq_file *m, void *v)
+ 	struct vm_area_struct *vma = v;
+ 	struct mem_size_stats mss;
+ 
++	if (bypass_show_map_vma(vma) == 1)
++        return 0;
++
+ 	memset(&mss, 0, sizeof(mss));
+ 
+ 	smap_gather_stats(vma, &mss);
+@@ -865,7 +888,7 @@ static int show_smap(struct seq_file *m, void *v)
+ 		return 0;
+ 	}
+ 	#endif /*OPLUS_FEATURE_PERFORMANCE*/
+-	
++
+ 	show_map_vma(m, vma);
+ 	if (vma_get_anon_name(vma)) {
+ 		seq_puts(m, "Name:           ");
