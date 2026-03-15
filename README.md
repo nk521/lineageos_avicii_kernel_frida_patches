@@ -38,3 +38,4 @@ which
 * Pack image.
 * Push it to your phone and ask magisk to patch it.
 * Flash using fastboot.
+* Checkout https://www.reddit.com/r/Magisk/comments/1lhgla3/how_to_get_strong_integrity_the_complete/.
